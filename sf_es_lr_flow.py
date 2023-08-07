@@ -2,11 +2,12 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_squared_error, r2_score
 from elastic import get_elastic_client
-from metaflow import FlowSpec, step, card, current, Parameter
+from metaflow import FlowSpec, step, card, batch, current, Parameter
 from metaflow.cards import Image
 from sklearn.linear_model import LinearRegression
+from config import bucket_name, image
 import numpy as np
-from utils import upload_to_s3
+from utils import upload_to_s3, get_evidently_html
 import matplotlib.pyplot as plt
 import joblib
 import io, os
@@ -15,12 +16,13 @@ class SfEsLrFlow(FlowSpec):
     """
     A Metaflow flow for saving docs from ES nutrients index to s3 bucket
     """
+    @batch(cpu=2, memory=3500,image=image)
     @card
     @step
     def start(self):
         """Fetch training, validation, and testing docs from Elasticsearch index"""
 
-        self.bucket_name = "mlops-nutrients"
+        self.bucket_name = bucket_name
         # Connect to Elasticsearch
         es = get_elastic_client("local")  # Update with your Elasticsearch configuration
 
@@ -129,6 +131,7 @@ class SfEsLrFlow(FlowSpec):
 
         self.next(self.linear_regression)
 
+    @batch(cpu=2, memory=7500,image=image)
     @card
     @step
     def linear_regression(self):
@@ -174,6 +177,7 @@ class SfEsLrFlow(FlowSpec):
 
     # python jupyter/sf_es_lr_flow.py card view visualize
     # on the left side of the VS code explorer under metaflow_card_cache right click on the card and open in the browser
+    @batch(cpu=2, memory=7500,image=image)
     @card
     @step
     def visualize(self):
@@ -253,11 +257,12 @@ class SfEsLrFlow(FlowSpec):
 
         self.next(self.end)
 
+    @batch(cpu=2, memory=3500,image=image)
     @step
     def end(self):
-        """Save the models to s3://{bucket_name}/{models}{model_name.pkl} files """
+        """Save the models to s3://{bucket_name}/{models}{model_name.joblib} files """
         # Save the model to a file
-        self.regression_path = 'models/linear_regression_model.pkl'
+        self.regression_path = 'models/linear_regression_model.joblib'
 
         # Create the directory if it doesn't exist
         os.makedirs('models', exist_ok=True)

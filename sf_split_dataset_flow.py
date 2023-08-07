@@ -1,6 +1,7 @@
 import random
 from metaflow import Flow, FlowSpec, step, retry, batch
 from elastic import get_elastic_client
+from config import bucket_name, index, image
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -8,14 +9,15 @@ class SfSplitDataset(FlowSpec):
     """
     A Metaflow flow for saving docs from ES nutrients index to s3 bucket
     """
+    @batch(cpu=2, memory=3500,image=image)
     @step
     def start(self):
         """fetch all nutrients docs from elastic search index"""
 
         # Specify the S3 bucket and file path
-        self.bucket_name = 'mlops-nutrients'
-        self.file = 'nutrients.parquet'
-        self.prefix = 'nutrients'
+        self.bucket_name = bucket_name
+        self.file = f'{index}.parquet'
+        self.prefix = index
         
         # Read the Parquet file from S3 into a PyArrow Table
         table = pq.read_table(f's3://{self.bucket_name}/{self.prefix}/{self.file}')
@@ -27,6 +29,7 @@ class SfSplitDataset(FlowSpec):
         self.docs = df.to_dict(orient='records')
         self.next(self.split_dataset)
 
+    @batch(cpu=2, memory=3500,image=image)
     @step
     def split_dataset(self):
         """randomly label 1/3 training, 1/3 validation, 1/3 testing"""
@@ -68,6 +71,7 @@ class SfSplitDataset(FlowSpec):
         self.labeled_docs = labeled_docs
         self.next(self.ingest_to_index)
 
+    @batch(cpu=2, memory=3500,image=image)
     @step
     def ingest_to_index(self):
         """ write labeled docs into elastic search labeled index """
@@ -90,6 +94,7 @@ class SfSplitDataset(FlowSpec):
         self.next(self.end)
 
 
+    @batch(cpu=2, memory=3500,image=image)
     @step
     def end(self):
         """Print results summary"""

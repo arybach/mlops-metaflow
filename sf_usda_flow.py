@@ -3,7 +3,7 @@ from botocore.exceptions import ClientError
 from time import sleep
 from metaflow import Flow, FlowSpec, step, retry, batch
 from utils import download_from_s3, list_files_in_folder, upload_to_s3, read_data
-from config import bucket_name, image
+from config import bucket_name, index
 
 class SfUsdaFlow(FlowSpec):
     """
@@ -15,12 +15,12 @@ class SfUsdaFlow(FlowSpec):
         """Start the flow, init parameters, and get streams from a prior run."""
 
         self.bucket_name = bucket_name
-        self.prefix = "nutrients"
+        self.prefix = f"{index}/usda"
         self.docs = [] # for pylint
         self.fields = [] # for pylint
 
         contents = list_files_in_folder(self.bucket_name, self.prefix)
-        self.files = contents.get(self.prefix)
+        self.files = contents.get(self.prefix.split("/")[-1])
         self.next(self.download, foreach='files')
 
 
@@ -32,7 +32,7 @@ class SfUsdaFlow(FlowSpec):
         print(self.input)
         self.filename = self.input
         self.bucket_name = bucket_name
-        self.prefix = "nutrients"
+        self.prefix = f"{index}/usda"
         
         # check if the file already exists on S3
         if self.filename:

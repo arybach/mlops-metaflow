@@ -3,8 +3,6 @@ from botocore.exceptions import ClientError
 from time import sleep
 from metaflow import Flow, FlowSpec, step, retry, batch
 from utils import download_from_s3, list_files_in_folder, upload_to_s3, read_data
-from config import bucket_name, image
-from prompt import jsonfile_to_doc
 import boto3
 
 class SfDavinciFlow(FlowSpec):
@@ -16,7 +14,7 @@ class SfDavinciFlow(FlowSpec):
     def start(self):
         """Start the flow, init parameters, and get streams from a prior run."""
 
-        self.bucket_name = bucket_name
+        self.bucket_name = "usda.nutrients"
         self.prefix = "recipes"
         self.docs = [] # for pylint
 
@@ -36,8 +34,8 @@ class SfDavinciFlow(FlowSpec):
     @step
     def download(self):
         self.filename = self.input
-        self.bucket_name = bucket_name
-        self.prefix = "recipes"
+        self.bucket_name = "usda.nutrients"
+        self.prefix = "recipes_data"
         self.docs = []
         self.modjson = []
 

@@ -4,4 +4,9 @@ cards
 data
 eland
 models
-config.py
+wandb
+.metaflow
+nutrients
+.venv
+metaflow_card_cache
+mlops-nutrients

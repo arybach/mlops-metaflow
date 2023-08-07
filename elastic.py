@@ -1,45 +1,67 @@
 # cloud example
 from elasticsearch import Elasticsearch
 import os
-
+import ssl
+from config import es_local_host, es_cloud_host, es_password
 
 def get_elastic_client(mode: str ='local'):
-    # local or cloud
+    # initialized local or cloud elastic search client
+    # if os.environ.get(var) returns None it attempts to use the values from config.py
+    # this is needed in case some of envs were not passed to the container and it takes some time to redeploy one
 
-    ES_CLOUD_ID=os.environ.get("ES_CLOUD_ID")
-    ES_USERNAME=os.environ.get("ES_USERNAME")
-    ES_PASSWORD=os.environ.get("ES_PASSWORD")
-    ES_ENDPOINT=os.environ.get("ES_ENDPOINT")
-    #ES_LOCAL_HOST=os.environ.get("ES_LOCAL_HOST")
-    ES_LOCAL_HOST="localhost"
-    ES_CLOUD_HOST=os.environ.get("ES_CLOUD_HOST")
+    ES_CLOUD_ID = os.environ.get("ES_CLOUD_ID")
+    ES_USERNAME = os.environ.get("ES_USERNAME")
+    ES_PASSWORD = os.environ.get("ES_PASSWORD")
+    # ES_ENDPOINT = os.environ.get("ES_ENDPOINT")
+
+    if not ES_USERNAME:
+        ES_USERNAME = "elastic"
+
+    if not ES_PASSWORD:
+        ES_PASSWORD = es_password
 
     # Create the Elasticsearch client
     if mode == 'cloud':
-        # Connect to Elasticsearch cloud
-        # port = 9243        
-        client = Elasticsearch(
-            cloud_id=ES_CLOUD_ID,
-            http_auth=(ES_USERNAME, ES_PASSWORD)    
-        )
+        try:
+            if not ES_CLOUD_ID:
+                ES_CLOUD_ID = es_cloud_host
+
+            # Connect to Elasticsearch cloud - port is not needed here
+            # port = 9243        
+            client = Elasticsearch(
+                cloud_id=ES_CLOUD_ID,
+                basic_auth=(ES_USERNAME, ES_PASSWORD)
+            )
+        except Exception as e:
+            print(f"Failed to create Elasticsearch client in cloud mode. Error: {str(e)}")
+            # this is for debugging
+            #print(f"ES_USERNAME: {ES_USERNAME}")
+            #print(f"ES_PASSWORD: {ES_PASSWORD}")
+            raise e
 
     elif mode == 'local':
+        try:
 
-        if ES_LOCAL_HOST:
-            local_host=ES_LOCAL_HOST
-        else:
-            local_host="elasticsearch"
-            
-        port = 9200
-        scheme = "http"
-        username = "elastic"
-        password = "elasticsearchme"
-        
-        # Create the Elasticsearch client
-        client = Elasticsearch(
-            hosts=[{"host": local_host, "port": port, "scheme": scheme}],
-            http_auth=(username, password)
-        )
+            port = 9200
+            if es_local_host:
+                local_host = es_local_host
+                scheme = "https"
+            else:
+                local_host = "localhost"
+                scheme = "http"
+
+            # Create the Elasticsearch client
+            client = Elasticsearch(
+                hosts=[{"host": local_host, "port": port, "scheme": scheme}],
+                basic_auth=(ES_USERNAME, ES_PASSWORD),
+                verify_certs=False  # Disable certificate verification
+            )
+        except Exception as e:
+            print(f"Failed to create local Elasticsearch client. Error: {str(e)}")
+            # this is for debugging
+            # print(f"ES_USERNAME: {ES_USERNAME}")
+            # print(f"ES_PASSWORD: {ES_PASSWORD}")
+            raise e
     else:
         client = None
     
@@ -51,5 +73,6 @@ def get_elastic_client(mode: str ='local'):
 
 
 def drop_index(es_client, index):
+    """ drop index from elastic search """
     es_client.indices.delete(index=index)
     print(f"Index '{index}' has been dropped successfully.")

@@ -4,6 +4,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from metaflow import Flow, FlowSpec, step, retry, batch
 from utils import upload_to_s3
+from config import bucket_name, index
 
 class SfExportDocsToS3(FlowSpec):
     """
@@ -17,7 +18,7 @@ class SfExportDocsToS3(FlowSpec):
         es = get_elastic_client("local")  # Update with your Elasticsearch configuration
 
         # Define the index name
-        self.index_name = "nutrients"
+        self.index_name = index
         scroll_size = 10000  # Adjust the scroll size based on your requirements
 
         # Define the query to retrieve all documents
@@ -58,8 +59,8 @@ class SfExportDocsToS3(FlowSpec):
     @step
     def save_to_s3(self):
         self.filename = f"{self.index_name}.parquet"
-        self.bucket_name = "mlops-nutrients"
-        self.prefix = "nutrients"
+        self.bucket_name = bucket_name
+        self.prefix = self.index_name
 
         local_path = f"{self.prefix}/{self.filename}"
 

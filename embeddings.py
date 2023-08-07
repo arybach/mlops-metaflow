@@ -40,7 +40,7 @@ def calculate_vector_embeddings(text, model_name):
 def ingest_embeddings_to_elasticsearch(embeddings, index_name, doc_ids):
     """ Ingest the embedding vectors back into the Elasticsearch index """
     
-    # connect to either local or cloud client
+    # Connect to either local or cloud client
     es = get_elastic_client("local")  
     for doc_id, embedding in zip(doc_ids, embeddings):
         body = {
@@ -48,5 +48,23 @@ def ingest_embeddings_to_elasticsearch(embeddings, index_name, doc_ids):
                 "embedding": embedding
             }
         }
-        es.update(index=index_name, id=doc_id, body=body)
-
+        try:
+            # Fetch the document using the 'id' field
+            result = es.search(index=index_name, body={"query": {"term": {"id": doc_id}}})
+            
+            # Check if any documents were found
+            if result["hits"]["total"]["value"] > 0:
+                # Get the '_id' of the first matching document
+                doc_id = result["hits"]["hits"][0]["_id"]
+                
+                # Update the document using the '_id' field
+                es.update(index=index_name, id=doc_id, body=body)
+            else:
+                print(f"No document found with id={doc_id} in index={index_name}")
+        except Exception as e:
+            print(f"Failed to update document with id={doc_id} in index={index_name}. Error: {e}")
+            print("Arguments:")
+            print(f"index_name: {index_name}")
+            print(f"doc_id: {doc_id}")
+            print(f"body: {body}")
+            raise e  # Re-raise the exception

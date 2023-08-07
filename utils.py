@@ -5,7 +5,6 @@ import pandas as pd
 from prompt import flatten_dicts_to_text
 from daily_values import fix_recipes_labels, fix_nutrition_labels
 
-
 AWS_ACCESS_KEY_ID=os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY=os.environ.get("AWS_SECRET_ACCESS_KEY")
 
@@ -163,3 +162,19 @@ def read_data(file_paths, tag='recipes'):
     df = pd.DataFrame(data)
     df = df.rename(columns={"_id": "id"})
     return df.to_dict(orient="records")
+
+##############################################################################################
+
+def get_evidently_html(evidently_object) -> str:
+    """Returns the rendered EvidentlyAI report/metric as HTML
+
+    Should be assigned to `self.html`, installing `metaflow-card-html` to be rendered
+    """
+    import tempfile
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        evidently_object.save_html(tmp.name)
+        with open(tmp.name) as fh:
+            return fh.read()
+        
+

@@ -224,8 +224,8 @@ class SfEsClustersFlow(FlowSpec):
     @step
     def end(self):
         # Save the models to s3://{bucket_name}/{models}{model_name.joblib} files
-        self.hierarchy_path = 'models/hierarchical_clustering_model.joblib'
-        self.cmeans_path = 'models/cmeans_clustering_model.joblib'
+        self.hierarchy_path = 'models/hierarchical_clustering_model_metaflow.joblib'
+        self.cmeans_path = 'models/cmeans_clustering_model_metaflow.joblib'
 
         # Create the directory if it doesn't exist
         os.makedirs('models', exist_ok=True)

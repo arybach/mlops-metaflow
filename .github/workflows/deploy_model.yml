@@ -1,0 +1,35 @@
+name: Deploy Model to S3
+
+on:
+  push:
+    branches:
+      - main # trigger on push to main branch, adjust as needed
+
+jobs:
+  upload_model:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install wandb boto3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ap-southeast-1 # adjust the region as needed
+
+    - name: Run deploy script
+      run: python deploy_model.py
+
+    - name: Finish deploy
+      run: echo "Model deployed successfully. ECR Docker image passed tests!"

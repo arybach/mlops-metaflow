@@ -1,3 +1,27 @@
+## Introducing a Flavorful Experiment: A Repo Dedicated to Healthy Nutrition and More
+    https://github.com/arybach/mlops-infra.git
+
+    Development Stage Alert: This repository is currently in the development phase. It's my special pet project whipped up for my wife, Natalia, who happens to be an aficionado of healthy nutrition.
+
+    Here's what's cooking:
+
+    1. Taste-Testing Food Labeling:
+    The main course of this project is to enable testing of various scoring models for food items. While we're using a mock-up scoring function for now (because hey, I'm not a data scientist!), the focus is on the MlOps/DevOps part.
+
+    2. Extra Ingredients:
+    Check out the snippet of code under extras, where a more complex approach to scoring awaits. Be mindful, though; experimenting with it could run upwards of $800 on API calls.
+
+    3. Add Your Spice:
+    This kitchen is open to all! Contribute your version of the scoring function or throw in model tests, reports, or additional integrations. Plus, it's all open-source.
+
+    4. Serving a Side of Knowledge:
+    This isn't just a project; it's a step-by-step introduction to Metaflow on AWS Batch, Step Functions, and integrations with WANDB and Evidently. It's tailored for those interested in Metaflow but facing onboarding obstacles.
+
+    5. The Bill, Please:
+    Fully deploying this dish takes around 3 to 5 hours, and it costs $300+ monthly, depending on compute time and resources. Fancy the Elastic Search enterprise license? That'll be an extra $200+ monthly.
+    😀
+
+
 ### Create new s3 bucket: mlops-nutrients (already created in ap-southeast-1) with the following:
 * bucket access policy - DON"T FORGET TO SPECIFY YOUR OWN PRINCIPLE ACCOUNTS! to use a bucket for read/write.
 * reading from mlops-nutrients bucket is allowed to anyone at the moment
@@ -298,3 +322,13 @@ and these - fetched via fastapi:
 add arns to the run_state_machine.py to then trigger all flows at once in the AWS Step Functions console
 
 ### Note: AWS Batch jobs can get stuck in Runnable state when there are no available resources (EC2 instances with the right AMI, VCPUs and RAM configurations) - easiest solution is to expand types of EC2 instances used by the queue in the metaflow Terraform module variables.tf file. Although that would require to destroy and re-create the entire infrastructure after infra step (so Metaflow, EC2, Fastapi and Batch). Anothe
+
+### Model deployment
+
+WANDB - register model in UI:
+![Alt text](image-8.png)
+
+.github/workflows/deploy_model.yml
+will deploy xgboost model to AWS Lambda from WANDB registry and linear regression model from Metfalow artifcats (as an example)
+
+Adding versioning to mlops-nutrients/model bucket would make this more robust

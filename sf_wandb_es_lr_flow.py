@@ -1,5 +1,5 @@
 import pandas as pd
-from config import image
+from config import image, WANDB_ENTITY, WANDB_PROJECT
 from sklearn.metrics import mean_squared_error, r2_score
 from elastic import get_elastic_client
 from metaflow import FlowSpec, step, batch, environment, current, Parameter
@@ -235,11 +235,13 @@ class SfWandbEsLrFlow(FlowSpec):
 
         # Upload the files to S3
         self.path_to_regression_model = upload_to_s3(self.regression_path, self.bucket_name)
- 
+        art = wandb.Artifact('regression_model', type='model')
+        art.add_reference(self.path_to_regression_model)
+        wandb.log_artifact(art)
 
 if __name__ == '__main__':
     load_dotenv()
     # Initialize W&B
-    wandb.init()
+    wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT)
     flow = SfWandbEsLrFlow()
     flow.run()

@@ -262,7 +262,7 @@ class SfEsLrFlow(FlowSpec):
     def end(self):
         """Save the models to s3://{bucket_name}/{models}{model_name.joblib} files """
         # Save the model to a file
-        self.regression_path = 'models/linear_regression_model.joblib'
+        self.regression_path = 'models/linear_regression_model_metaflow.joblib'
 
         # Create the directory if it doesn't exist
         os.makedirs('models', exist_ok=True)

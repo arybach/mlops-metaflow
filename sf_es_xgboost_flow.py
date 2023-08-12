@@ -334,7 +334,7 @@ class SfEsXGBoostFlow(FlowSpec):
     def end(self):
         """Save the models to s3://{bucket_name}/{models}{model_name.joblib} files """
         # Save the model to a file
-        self.xgboost_path = 'models/xgboost_model.joblib'
+        self.xgboost_path = 'models/xgboost_model_metaflow.joblib'
 
         # Create the directory if it doesn't exist
         os.makedirs('models', exist_ok=True)

@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score
 from sklearn.metrics import mean_squared_error, r2_score
 from utils import upload_to_s3
-from config import bucket_name, image
+from config import bucket_name, image, WANDB_ENTITY, WANDB_PROJECT
 #import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -264,11 +264,19 @@ class SfWandbEsClustersFlow(FlowSpec):
 
         # Upload the files to S3
         self.path_to_hierarchical_model = upload_to_s3(self.hierarchy_path, self.bucket_name)
+        art = wandb.Artifact('hierarchical_model', type='model')
+        art.add_reference(self.path_to_hierarchical_model)
+        wandb.log_artifact(art)
+
         self.path_to_cmeans_model = upload_to_s3(self.cmeans_path, self.bucket_name)
+        art = wandb.Artifact('cmeans_model', type='model')
+        art.add_reference(self.path_to_cmeans_model)
+        wandb.log_artifact(art)
+
 
 if __name__ == '__main__':
     load_dotenv()
     # Initialize W&B
-    wandb.init()
+    wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT)
     flow = SfWandbEsClustersFlow()
     flow.run()

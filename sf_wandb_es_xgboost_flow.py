@@ -3,7 +3,7 @@ import xgboost as xgb
 from sklearn.metrics import mean_squared_error, r2_score
 from elastic import get_elastic_client
 from metaflow import FlowSpec, step, batch, environment, current, Parameter
-from config import bucket_name, image
+from config import bucket_name, image, WANDB_ENTITY, WANDB_PROJECT
 import numpy as np
 from utils import upload_to_s3
 import joblib
@@ -286,11 +286,13 @@ class SfWandbEsXGBoostFlow(FlowSpec):
 
         # Upload the files to S3
         self.path_to_xgboost_model = upload_to_s3(self.xgboost_path, self.bucket_name)
-
+        art = wandb.Artifact('xgboost_model', type='model')
+        art.add_reference(self.path_to_xgboost_model)
+        wandb.log_artifact(art)
 
 if __name__ == '__main__':
     load_dotenv()
     # Initialize W&B
-    wandb.init()
+    wandb.init(entity=WANDB_ENTITY, project=WANDB_PROJECT)
     flow = SfWandbEsXGBoostFlow()
     flow.run()

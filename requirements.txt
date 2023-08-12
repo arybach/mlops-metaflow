@@ -28,3 +28,4 @@ tools==0.1.9
 setuptools 
 wheel
 python-dotenv
+pathlib

@@ -11,19 +11,20 @@ index='nutrients'
 # model from hugging face used for vector embeddings - if any 
 model="msmarco"
 # set to ip address of ec2 instance created in mlops-infra/ec2
-es_local_host=os.environ.get("ES_LOCAL_HOST")
+es_local_host=os.environ.get("ES_LOCAL_HOST", 'localhost')
 es_cloud_host=''
-es_password=os.environ.get("ES_PASSWORD")
+es_password=os.environ.get("ES_PASSWORD","elasticsearchme")
 
 # this is an example of a cloud hosted elasticsearch instance name
 image="388062344663.dkr.ecr.ap-southeast-1.amazonaws.com/metaflow-batch-mlops-apse1:latest"
 WANDB_ENTITY="tumblebuns"
 WANDB_PROJECT="nutrients"
 
-# fastapi_host is a public ip of the ec2-instance created by fastapi/terraform apply
-fastapi_host: Text = os.getenv('MONITORING_DB_HOST')
-database_user: Text = os.getenv('POSTGRES_USER')
-database_password: Text = os.getenv('POSTGRES_PASSWORD')
+# fastapi_host is a public ip (if running metaflow flows from local machine) or private ip (if running in @batch mode) of the ec2-instance created by fastapi/terraform apply
+# set host to fastapi ip and add default POSTGRES credentials if not set in Vault and ECR batch image 
+fastapi_host: Text = os.getenv('MONITORING_DB_HOST','0.0.0.0')
+database_user: Text = os.getenv('POSTGRES_USER', "changeme")
+database_password: Text = os.getenv('POSTGRES_PASSWORD', "changeme")
 
 # Use the environment variables to construct the DATABASE_URI
 DATABASE_URI: Text = f'postgresql://{database_user}:{database_password}@{fastapi_host}:5432/monitoring_db'

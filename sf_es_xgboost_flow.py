@@ -17,7 +17,7 @@ class SfEsXGBoostFlow(FlowSpec):
     """
     A Metaflow flow for saving docs from ES nutrients index to s3 bucket
     """
-    #@batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @card
     @step
     def start(self):
@@ -132,7 +132,7 @@ class SfEsXGBoostFlow(FlowSpec):
 
         self.next(self.xgboost_regression)
 
-    #@batch(cpu=2, memory=7500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @card
     @step
     def xgboost_regression(self):
@@ -248,7 +248,7 @@ class SfEsXGBoostFlow(FlowSpec):
 
         self.next(self.visualize)
 
-    #@batch(cpu=2, memory=7500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @card
     @step
     def visualize(self):
@@ -328,7 +328,7 @@ class SfEsXGBoostFlow(FlowSpec):
 
         self.next(self.end)
 
-    #@batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=3500,image=image)
     @card
     @step
     def end(self):

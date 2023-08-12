@@ -1,6 +1,8 @@
-import os
+from pathlib import Path
+import boto3
+from joblib import load
 import pandas as pd
-from metaflow import Flow, FlowSpec, step, card, current, batch, Parameter, retry
+from metaflow import Flow, FlowSpec, step, card, environment, batch, Parameter, retry
 #from metaflow.cards import Image
 from config import bucket_name, index, image
 from utils import upload_to_s3, get_evidently_html
@@ -9,37 +11,123 @@ from elastic import get_elastic_client
 
 class SfEsEvidently(FlowSpec):
 
+    @batch(cpu=2, memory=3500,image=image)
     @card
-    #@batch(cpu=2, memory=3500,image=image)
     @step
     def start(self):
-        """Start the flow and get docs from a prior flow."""
+        """Fetch training, validation, and testing docs from Elasticsearch index"""
 
-        # Get streams from a prior run
-        download_flow_data = Flow("SfEsLrFlow")
-        self.training_df = download_flow_data.latest_run["start"].task.data.training_df
-        self.validation_df = download_flow_data.latest_run["start"].task.data.validation_df
-        self.testing_df = download_flow_data.latest_run["start"].task.data.testing_df
+        self.bucket_name = bucket_name
+        # Connect to Elasticsearch
+        es = get_elastic_client("local")  # Update with your Elasticsearch configuration
 
-        if 'embedding' in self.training_df.columns:
-            self.training_df.drop(columns=['embedding'], inplace=True)
-        
-        if 'embedding' in self.validation_df.columns:
-            self.validation_df.drop(columns=['embedding'], inplace=True)
+        # Define the index name
+        self.index_name = "labeled"
+        scroll_size = 10000  # Adjust the scroll size based on your requirements
 
-        if 'embedding' in self.testing_df.columns:
-            self.testing_df.drop(columns=['embedding'], inplace=True)
-        
-        download_xgboost_flow = Flow("SfEsXGBoostFlow")
-        self.xgboost_model = download_xgboost_flow.latest_run["xgboost_regression"].task.data.xgboost_model
+        # Define the labels and corresponding datasets
+        labels = ["training", "validation", "testing"]
 
-        download_regression_flow = Flow("SfEsLrFlow")
-        self.regression_model = download_regression_flow.latest_run["linear_regression"].task.data.regression
+        for label in labels:
+            # Define the query to retrieve documents for the current label
+            query = {
+                "query": {
+                    "term": {
+                        "label.keyword": label
+                    }
+                },
+                "size": scroll_size
+            }
+            # Initial request
+            hits = []
+            response = es.search(index=self.index_name, body=query, scroll="2m") # pylint: disable=E1123
+            scroll_id = response["_scroll_id"]
+            hits.extend(response["hits"]["hits"])
+
+            # Subsequent requests
+            while True:
+                response = es.scroll(scroll_id=scroll_id, scroll="2m")
+                scroll_id = response["_scroll_id"]
+                res = response["hits"]["hits"]
+                if not res:
+                    break
+                hits.extend(res)
+
+            data = []
+            for hit in hits:
+                source = hit["_source"]
+                if source and source["labelNutrients"]:
+                    # using declared nutrition values
+                    # Fill missing values with 0 (as it makes sense in this case)
+                    fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                              "protein", "calcium", "iron", "potassium", "calories" ]
+
+                    item = {
+                        "fid": source["fid"],
+                        "description": source["description"],
+                        "score": source["score"]
+                    }
+                    for field in fields:
+                        if source and source["labelNutrients"]:
+                            amount = source["labelNutrients"].get(field, {"amount": 0})
+                            if amount:
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+                            else:
+                                amount = {"amount": 0}
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+
+                    data.append(item)
+
+                elif source and source["nutrients"]:
+                    # using calculated nutrition values
+                    # Fill missing values with 0 (as it makes sense in this case)
+                    fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                              "protein", "calcium", "iron", "potassium", "calories" ]
+
+                    item = {
+                        "fid": source["fid"],
+                        "description": source["description"],
+                        "score": source["score"]
+                    }
+                    for field in fields:
+                        if source and source["nutrients"]:
+                            amount = source["nutrients"].get(field, {"amount": 0})
+                            if amount:
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+                            else:
+                                amount = {"amount": 0}
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+
+                    data.append(item)
+
+            # Convert the documents to a pandas DataFrame and assign it to the corresponding dataset
+            if label == 'training':
+                self.training_df = pd.DataFrame(data)
+            elif label == 'validation':
+                self.validation_df = pd.DataFrame(data)
+            elif label == 'testing':
+                self.testing_df = pd.DataFrame(data)
 
         self.next(self.fetch_notlabeled)
 
+    @batch(cpu=2, memory=3500,image=image)
     @card
-    #@batch(cpu=2, memory=3500,image=image)
     @step
     def fetch_notlabeled(self):
         """Start the flow and get all docs from nutrients index which are not in labeled index."""
@@ -167,11 +255,37 @@ class SfEsEvidently(FlowSpec):
 
         self.next(self.calc_predictions)
 
-
-    #@batch(cpu=3, memory=15000,image=image)
+    @batch(cpu=3, memory=15000,image=image)
     #@retry(times=2)
     @step
     def calc_predictions(self):
+        """Fetch models from S3 and calculate predictions."""
+        s3_client = boto3.client('s3')
+
+        # List the model files in S3
+        model_names = [ 'xgboost_model', 'linear_regression_model' ]
+        model_files = [ f"{model_name}.joblib" for model_name in model_names ]
+
+        # Create the 'models' directory if it doesn't exist
+        models_dir = Path("models")
+        models_dir.mkdir(exist_ok=True)
+
+        # Fetch models from S3 and save them in the 'models' directory
+        for model_name, model_file in zip(model_names, model_files):
+            s3_object_key = f"models/{model_file}"
+            local_model_path = models_dir / model_file
+            s3_client.download_file(bucket_name, s3_object_key, str(local_model_path))
+            print(f"Model '{model_file}' downloaded from S3 and saved in 'models' directory.")
+
+            # Load the model
+            model = load(local_model_path)
+
+            # Assign the model to the class attribute
+            if model_name == 'xgboost_model':
+                self.xgboost_model = model
+            elif model_name == 'linear_regression_model':
+                self.regression_model = model
+
         drop_columns = ['fid','description', 'score']
 
         # Validation dataset
@@ -192,9 +306,9 @@ class SfEsEvidently(FlowSpec):
         self.next(self.monitoring_data_quality)
 
 
-    @card(type='html',options={"attribute":"data_quality"})
-    #@batch(cpu=3, memory=15000,image=image)
+    @batch(cpu=3, memory=18000,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"data_quality"})
     @step
     def monitoring_data_quality(self):
         import os
@@ -231,8 +345,8 @@ class SfEsEvidently(FlowSpec):
         self.next(self.data_drift_test)
 
 
+    @batch(cpu=2, memory=7500,image=image)
     @card(type='html',options={"attribute":"drift_report"})
-    #@batch(cpu=2, memory=7500,image=image)
     @step
     def data_drift_test(self):
         import os
@@ -282,9 +396,9 @@ class SfEsEvidently(FlowSpec):
         self.next(self.regression_model_performance)
 
 
-    @card(type='html',options={"attribute":"model_performance"})
-    #@batch(cpu=3, memory=15000,image=image)
+    @batch(cpu=3, memory=15000,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"model_performance"})
     @step
     def regression_model_performance(self):
         import os
@@ -347,7 +461,7 @@ class SfEsEvidently(FlowSpec):
 
 
     @card(type='html',options={"attribute":"model_performance"})
-    #@batch(cpu=3, memory=15000,image=image)
+    @batch(cpu=3, memory=15000,image=image)
     #@retry(times=2)
     @step
     def xgboost_model_performance(self):
@@ -409,8 +523,8 @@ class SfEsEvidently(FlowSpec):
 
         self.next(self.end)
 
-    @card
-    #@batch(cpu=2, memory=3500,image=image)
+    #@card
+    @batch(cpu=1, memory=3500)
     @step
     def end(self):
         print("Drift test completed")

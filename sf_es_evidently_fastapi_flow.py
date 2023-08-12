@@ -4,28 +4,254 @@ import logging
 import pandas as pd
 from metaflow import Flow, FlowSpec, step, card, current, batch, Parameter, retry
 #from metaflow.cards import Image
-from config import fastapi_host, image
+from config import fastapi_host, image, bucket_name, index
 from utils import upload_to_s3, get_evidently_html
+from elastic import get_elastic_client
 from time import sleep
 
 class SfEsEvidentlyFastApi(FlowSpec):
 
-    @card
     @batch(cpu=2, memory=3500,image=image)
+    @card
     @step
     def start(self):
-        """Start the flow and get docs from a prior flow."""
+        """Fetch training, validation, and testing docs from Elasticsearch index"""
 
-        # Get streams from a prior run
-        download_flow_data = Flow("SfEsEvidently")
-        self.testing_df = download_flow_data.latest_run["fetch_notlabeled"].task.data.testing_df
-        self.notlabeled_df = download_flow_data.latest_run["fetch_notlabeled"].task.data.notlabeled_df
+        self.bucket_name = bucket_name
+        # Connect to Elasticsearch
+        es = get_elastic_client("local")  # Update with your Elasticsearch configuration
 
-        # download_xgboost_flow = Flow("SfEsXGBoostFlow")
-        # self.xgboost_model = download_xgboost_flow.latest_run["xgboost_regression"].task.data.xgboost_model
+        # Define the index name
+        self.index_name = "labeled"
+        scroll_size = 10000  # Adjust the scroll size based on your requirements
 
-        # download_regression_flow = Flow("SfEsLrFlow")
-        # self.regression_model = download_regression_flow.latest_run["linear_regression"].task.data.regression
+        # Define the labels and corresponding datasets
+        labels = ["training", "validation", "testing"]
+
+        for label in labels:
+            # Define the query to retrieve documents for the current label
+            query = {
+                "query": {
+                    "term": {
+                        "label.keyword": label
+                    }
+                },
+                "size": scroll_size
+            }
+            # Initial request
+            hits = []
+            response = es.search(index=self.index_name, body=query, scroll="2m") # pylint: disable=E1123
+            scroll_id = response["_scroll_id"]
+            hits.extend(response["hits"]["hits"])
+
+            # Subsequent requests
+            while True:
+                response = es.scroll(scroll_id=scroll_id, scroll="2m")
+                scroll_id = response["_scroll_id"]
+                res = response["hits"]["hits"]
+                if not res:
+                    break
+                hits.extend(res)
+
+            data = []
+            for hit in hits:
+                source = hit["_source"]
+                if source and source["labelNutrients"]:
+                    # using declared nutrition values
+                    # Fill missing values with 0 (as it makes sense in this case)
+                    fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                              "protein", "calcium", "iron", "potassium", "calories" ]
+
+                    item = {
+                        "fid": source["fid"],
+                        "description": source["description"],
+                        "score": source["score"]
+                    }
+                    for field in fields:
+                        if source and source["labelNutrients"]:
+                            amount = source["labelNutrients"].get(field, {"amount": 0})
+                            if amount:
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+                            else:
+                                amount = {"amount": 0}
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+
+                    data.append(item)
+
+                elif source and source["nutrients"]:
+                    # using calculated nutrition values
+                    # Fill missing values with 0 (as it makes sense in this case)
+                    fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                              "protein", "calcium", "iron", "potassium", "calories" ]
+
+                    item = {
+                        "fid": source["fid"],
+                        "description": source["description"],
+                        "score": source["score"]
+                    }
+                    for field in fields:
+                        if source and source["nutrients"]:
+                            amount = source["nutrients"].get(field, {"amount": 0})
+                            if amount:
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+                            else:
+                                amount = {"amount": 0}
+                                val = amount.get("amount", 0)
+                                if val:
+                                    item.update({field: val})
+                                else:
+                                    item.update({field: 0})
+
+                    data.append(item)
+
+            # Convert the documents to a pandas DataFrame and assign it to the corresponding dataset
+            if label == 'training':
+                self.training_df = pd.DataFrame(data)
+            elif label == 'validation':
+                self.validation_df = pd.DataFrame(data)
+            elif label == 'testing':
+                self.testing_df = pd.DataFrame(data)
+
+        self.next(self.fetch_notlabeled)
+
+    @batch(cpu=2, memory=3500,image=image)
+    @card
+    @step
+    def fetch_notlabeled(self):
+        """Start the flow and get all docs from nutrients index which are not in labeled index."""
+
+        self.bucket_name = bucket_name
+        # Connect to Elasticsearch
+        es = get_elastic_client("local")  # Update with your Elasticsearch configuration
+
+        # fetch all docs from 
+        self.index_name = index
+        scroll_size = 10000  # Adjust the scroll size based on your requirements
+
+        # Define the query to retrieve all documents with non-empty nutrients or labelNutrients
+        query = {
+            "query": {
+                "bool": {
+                    "should": [
+                        {"exists": {"field": "nutrients"}},
+                        {"exists": {"field": "labelNutrients"}}
+                    ]
+                }
+            },
+            "size": scroll_size
+        }
+        # Initial request
+        response = es.search(index=self.index_name, body=query, scroll="2m") # pylint: disable=E1123
+        scroll_id = response["_scroll_id"]
+        hits = response["hits"]["hits"]
+
+        # Subsequent requests
+        while True:
+            response = es.scroll(scroll_id=scroll_id, scroll="2m")
+            scroll_id = response["_scroll_id"]
+            res = response["hits"]["hits"]
+            if not res:
+                break
+            hits.extend(res)
+
+        data = []
+        for hit in hits:
+            source = hit["_source"]
+            if source and source["labelNutrients"]:
+                # using declared nutrition values
+                # Fill missing values with 0 (as it makes sense in this case)
+                fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                            "protein", "calcium", "iron", "potassium", "calories" ]
+
+                item = {
+                    "fid": source["fid"],
+                    "description": source["description"],
+                    "score": source["score"]
+                }
+                for field in fields:
+                    if source and source["labelNutrients"]:
+                        amount = source["labelNutrients"].get(field, {"amount": 0})
+                        if amount:
+                            val = amount.get("amount", 0)
+                            if val:
+                                item.update({field: val})
+                            else:
+                                item.update({field: 0})
+                        else:
+                            amount = {"amount": 0}
+                            val = amount.get("amount", 0)
+                            if val:
+                                item.update({field: val})
+                            else:
+                                item.update({field: 0})
+
+                data.append(item)
+
+            elif source and source["nutrients"]:
+                # using calculated nutrition values
+                # Fill missing values with 0 (as it makes sense in this case)
+                fields = [ "fat", "saturatedFat", "transFat", "cholesterol", "sodium", "carbohydrates", "fiber", "sugars", 
+                            "protein", "calcium", "iron", "potassium", "calories" ]
+
+                item = {
+                    "fid": source["fid"],
+                    "description": source["description"],
+                    "score": source["score"]
+                }
+                for field in fields:
+                    if source and source["nutrients"]:
+                        amount = source["nutrients"].get(field, {"amount": 0})
+                        if amount:
+                            val = amount.get("amount", 0)
+                            if val:
+                                item.update({field: val})
+                            else:
+                                item.update({field: 0})
+                        else:
+                            amount = {"amount": 0}
+                            val = amount.get("amount", 0)
+                            if val:
+                                item.update({field: val})
+                            else:
+                                item.update({field: 0})
+
+                data.append(item)
+
+        # Convert the documents to a pandas DataFrame
+        print("Nutrients DataFrame:")
+        print(pd.DataFrame(data).head())
+
+        nutrients_df = pd.DataFrame(data)
+        if 'embedding' in nutrients_df.columns:
+            nutrients_df.drop(columns=['embedding'], inplace=True)
+
+        # Print the first few rows of labeled DataFrames before concatenation
+        print("Training DataFrame:")
+        print(self.training_df.head())
+
+        print("Validation DataFrame:")
+        print(self.validation_df.head())
+
+        print("Testing DataFrame:")
+        print(self.testing_df.head())
+
+        # Concatenate the dataframes
+        labeled_df = pd.concat([self.training_df, self.validation_df, self.testing_df], ignore_index=True)
+
+        # Find the documents that are in nutrients_df but not in labeled_df based on a unique identifier, for example, "doc_id"
+        self.notlabeled_df = nutrients_df[~nutrients_df["fid"].isin(labeled_df["fid"])]
 
         self.next(self.calc_predictions)
 
@@ -141,9 +367,9 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.monitoring_data_quality)
 
 
-    @card(type='html',options={"attribute":"data_quality"})
-    @batch(cpu=2, memory=7500,image=image)
+    @batch(cpu=2, memory=15000,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"data_quality"})
     @step
     def monitoring_data_quality(self):
         import os
@@ -178,8 +404,8 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.data_drift_test)
 
 
-    @card(type='html',options={"attribute":"drift_report"})
     @batch(cpu=2, memory=7500,image=image)
+    @card(type='html',options={"attribute":"drift_report"})
     @step
     def data_drift_test(self):
         import os
@@ -230,9 +456,9 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.regression_model_performance)
 
 
-    @card(type='html',options={"attribute":"model_performance"})
     @batch(cpu=2, memory=7500,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"model_performance"})
     @step
     def regression_model_performance(self):
         # fetches report from the fastapi endpoint
@@ -247,7 +473,7 @@ class SfEsEvidentlyFastApi(FlowSpec):
             resp = requests.get(url=url)
 
             if resp.status_code == 200:
-                print(resp.text)
+                #print(resp.text)
                 # download html file
                 # html_file = f'http://{fastapi_host}:5000/download-file/{resp}'
    
@@ -264,9 +490,9 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.xgboost_model_performance)
 
 
-    @card(type='html',options={"attribute":"model_performance"})
     @batch(cpu=2, memory=7500,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"model_performance"})
     @step
     def xgboost_model_performance(self):
         # fetches report from the fastapi endpoint
@@ -281,7 +507,7 @@ class SfEsEvidentlyFastApi(FlowSpec):
             resp = requests.get(url=url,timeout=120)
 
             if resp.status_code == 200:
-                print(resp.text)
+                #print(resp.text)
                 # download html file
                 # html_file = f'http://{fastapi_host}:5000/download-file/{resp}'
    
@@ -297,9 +523,9 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.regression_target_monitoring)
 
 
-    @card(type='html',options={"attribute":"regression_target"})
     @batch(cpu=2, memory=7500,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"regression_target"})
     @step
     def regression_target_monitoring(self):
         # fetches report from the fastapi endpoint
@@ -324,9 +550,9 @@ class SfEsEvidentlyFastApi(FlowSpec):
         self.next(self.xgboost_target_monitoring)
 
 
-    @card(type='html',options={"attribute":"xgboost_target"})
     @batch(cpu=2, memory=7500,image=image)
     #@retry(times=2)
+    @card(type='html',options={"attribute":"xgboost_target"})
     @step
     def xgboost_target_monitoring(self):
         # fetches report from the fastapi endpoint
@@ -350,7 +576,7 @@ class SfEsEvidentlyFastApi(FlowSpec):
 
         self.next(self.end)
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=3500)
     @step
     def end(self):
         print("Drift test completed")

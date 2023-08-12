@@ -2,7 +2,6 @@ import boto3
 import os
 import re, json
 import pandas as pd
-from prompt import flatten_dicts_to_text
 from daily_values import fix_recipes_labels, fix_nutrition_labels
 
 AWS_ACCESS_KEY_ID=os.environ.get("AWS_ACCESS_KEY_ID")
@@ -177,4 +176,15 @@ def get_evidently_html(evidently_object) -> str:
         with open(tmp.name) as fh:
             return fh.read()
         
+##############################################################################################
+
+def flatten_dicts_to_text(dictionary):
+    text = ""
+    for field, val in dictionary.items():
+        if isinstance(val, dict):
+            subtext = flatten_dicts_to_text(val)
+            text += f"{field}: {subtext}"
+        else:
+            text += f"{field}: {val}/n"
+    return text
 

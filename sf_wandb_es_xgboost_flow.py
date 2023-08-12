@@ -12,7 +12,7 @@ import wandb
 from wandb.integration.metaflow import wandb_log
 from dotenv import load_dotenv
 
-class SfEsXGBoostFlow(FlowSpec):
+class SfWandbEsXGBoostFlow(FlowSpec):
     """
     A Metaflow flow for saving docs from ES nutrients index to s3 bucket
     """
@@ -135,10 +135,10 @@ class SfEsXGBoostFlow(FlowSpec):
 
     @environment(vars={"WANDB_API_KEY": os.getenv('WANDB_API_KEY')})
     @wandb_log(datasets=True, models=True, settings=wandb.Settings())
-    @batch(cpu=2, memory=7500,image=image)
+    @batch(cpu=4, memory=15000,image=image)
     @step
     def xgboost_regression(self):
-        """Run XGBoost regression to predict score"""
+        """Run XsGBoost regression to predict score"""
 
         # Split training DataFrame into X_train and y_train
         X_train = self.training_df.drop(columns=["fid", "description", "score"])
@@ -244,7 +244,7 @@ class SfEsXGBoostFlow(FlowSpec):
 
     @environment(vars={"WANDB_API_KEY": os.getenv('WANDB_API_KEY')})
     @wandb_log(datasets=True, models=True, settings=wandb.Settings())
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @step
     def visualize(self):
         """Visualize XGBoost regression results and calculate MSE, RMSE, R2 score"""
@@ -292,5 +292,5 @@ if __name__ == '__main__':
     load_dotenv()
     # Initialize W&B
     wandb.init()
-    flow = SfEsXGBoostFlow()
+    flow = SfWandbEsXGBoostFlow()
     flow.run()

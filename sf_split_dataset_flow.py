@@ -1,13 +1,15 @@
 import random
-from metaflow import Flow, FlowSpec, step, retry, batch
+from metaflow import Flow, FlowSpec, step, retry, batch #, trigger_on_finish
 from elastic import get_elastic_client
 from config import bucket_name, index, image
 import pandas as pd
 import pyarrow.parquet as pq
 
+# @trigger_on_finish(flow='SfUsdaToEsFlow')
 class SfSplitDataset(FlowSpec):
     """
-    A Metaflow flow for saving docs from ES nutrients index to s3 bucket
+    A Metaflow flow for downloading archived docs from s3 bucket, labeling them into training, validation and testing groups and ingesting into 
+    labeled index in ealstic search 
     """
     @batch(cpu=2, memory=3500,image=image)
     @step
@@ -29,7 +31,7 @@ class SfSplitDataset(FlowSpec):
         self.docs = df.to_dict(orient='records')
         self.next(self.split_dataset)
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @step
     def split_dataset(self):
         """randomly label 1/3 training, 1/3 validation, 1/3 testing"""
@@ -71,7 +73,7 @@ class SfSplitDataset(FlowSpec):
         self.labeled_docs = labeled_docs
         self.next(self.ingest_to_index)
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @step
     def ingest_to_index(self):
         """ write labeled docs into elastic search labeled index """
@@ -91,14 +93,15 @@ class SfSplitDataset(FlowSpec):
 
         # Refresh the index to make the changes visible for search operations
         es.indices.refresh(index=self.to_index)
+        self.num_docs = len(self.labeled_docs)
         self.next(self.end)
 
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=1, memory=3500)
     @step
     def end(self):
         """Print results summary"""
-        print(f"Labeled {len(self.labeled_docs)} docs in: {self.to_index}")
+        print(f"Labeled {self.num_docs} docs in: {self.to_index}")
 
 if __name__ == '__main__':
     flow = SfSplitDataset()

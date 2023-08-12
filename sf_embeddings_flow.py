@@ -1,12 +1,12 @@
 import pandas as pd
 from elastic import get_elastic_client
 from embeddings import get_model, calculate_vector_embeddings, models, ingest_embeddings_to_elasticsearch
-from metaflow import FlowSpec, step, card, current, batch, conda_base
+from metaflow import FlowSpec, step, card, current, batch #, conda_base
 from utils import upload_to_s3
-from config import bucket_name, model, image
+from config import bucket_name, index, model, image
 import numpy as np
 
-# Add more libraries and their versions as needed
+# Add more libraries and their versions as needed - this is uber-inconvinient as you have to specify channel, package name and version (and these it before any ENVs!)
 # @conda_base(python='3.9.17', 
 #             libraries={
 #                 'numpy': '1.24.3',
@@ -31,7 +31,7 @@ class SfEmbeddingsFlow(FlowSpec):
         es = get_elastic_client("local")  # Update with your Elasticsearch configuration
 
         # Define the index name
-        self.index_name = "labeled"
+        self.index_name = index
 
         # Define the query to retrieve all documents
         query = {
@@ -63,7 +63,7 @@ class SfEmbeddingsFlow(FlowSpec):
         self.next(self.calculate_embeddings, foreach='batches')
 
     @card
-    @batch(cpu=3, memory=7500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @step
     def calculate_embeddings(self):
 
@@ -73,7 +73,7 @@ class SfEmbeddingsFlow(FlowSpec):
         doc_ids = [doc["id"] for doc in docs]
 
         # Define the index name (parent self.index_name is not passed in the foreach, only the for self.input=batch in self.batches)
-        self.index_name = "labeled"
+        self.index_name = index
 
         # Calculate vector embeddings using a specific model
         self.model_name = model  # Choose the desired model
@@ -91,7 +91,7 @@ class SfEmbeddingsFlow(FlowSpec):
         self.batch_docs = pd.DataFrame(data).to_dict(orient='records')        
         self.next(self.join)
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=7500,image=image)
     @step
     def join(self, inputs):
         """ join batch embeddings into a single dataframe """
@@ -105,7 +105,7 @@ class SfEmbeddingsFlow(FlowSpec):
         self.embeddings_df = pd.DataFrame(self.docs)
         self.next(self.end)
 
-    @batch(cpu=2, memory=3500,image=image)
+    @batch(cpu=2, memory=3500)
     @step
     def end(self):
         """ Embeddings added """

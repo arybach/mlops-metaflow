@@ -235,7 +235,7 @@ class SfWandbEsLrFlow(FlowSpec):
 
         # Upload the files to S3
         self.path_to_regression_model = upload_to_s3(self.regression_path, self.bucket_name)
-        art = wandb.Artifact('regression_model', type='model')
+        art = wandb.Artifact('linear_regression_model', type='model')
         art.add_reference(self.path_to_regression_model)
         wandb.log_artifact(art)
 

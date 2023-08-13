@@ -5,18 +5,20 @@ import sys  # Import the sys module
 if os.path.isfile(".env"):
     import dotenv
     dotenv.load_dotenv(".env")
-
+# modify to your project bucket name
 bucket_name='mlops-nutrients'
 index='nutrients'
 # model from hugging face used for vector embeddings - if any 
 model="msmarco"
-# set to ip address of ec2 instance created in mlops-infra/ec2
+# set default value to ip address of ec2 instance created in mlops-infra/ec2
 es_local_host=os.environ.get("ES_LOCAL_HOST", 'localhost')
 es_cloud_host=''
+# set default value to password in .env for EC2 deployment
 es_password=os.environ.get("ES_PASSWORD","elasticsearchme")
 
-# this is an example of a cloud hosted elasticsearch instance name
+# change to the arn of your ECR image
 image="388062344663.dkr.ecr.ap-southeast-1.amazonaws.com/metaflow-batch-mlops-apse1:latest"
+# modify to your WANDB settings
 WANDB_ENTITY="tumblebuns"
 WANDB_PROJECT="nutrients"
 

@@ -10,3 +10,5 @@ nutrients
 .venv
 metaflow_card_cache
 mlops-nutrients
+.github/workflows/artifacts
+.github/workflows/wandb

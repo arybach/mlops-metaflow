@@ -329,6 +329,6 @@ WANDB - register model in UI:
 ![Alt text](image-8.png)
 
 .github/workflows/deploy_model.yml
-will deploy xgboost model to AWS Lambda from WANDB registry and linear regression model from Metfalow artifcats (as an example)
+will deploy xgboost model to AWS Lambda from WANDB registry and linear regression model from Metfalow artifacts (as an example)
 
 Adding versioning to mlops-nutrients/model bucket would make this more robust

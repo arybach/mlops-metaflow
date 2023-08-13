@@ -29,7 +29,7 @@ jobs:
         aws-region: ap-southeast-1 # adjust the region as needed
 
     - name: Run deploy script
-      run: python deploy_model.py
-
+      run: python ./.github/workflows/deploy_model.py
+      
     - name: Finish deploy
       run: echo "Model deployed successfully. ECR Docker image passed tests!"
